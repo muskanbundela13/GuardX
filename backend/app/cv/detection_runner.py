@@ -2,7 +2,9 @@ import cv2
 import numpy as np
 import json
 
-
+from event_reliability import EventReliability
+from event_manager import EventManager
+from aggression_detector import AggressionDetector
 from video_pipeline import VideoPipeline
 from zone_events import ZoneEventDetector
 from crowd_detector import CrowdDetector
@@ -10,16 +12,18 @@ from event_engine import EventEngine
 from tracker import ObjectTracker
 from zones import ZONES
 from zone_engine import ZoneEngine
+from fall_detector import FallDetector
 zone_engine = ZoneEngine(ZONES)
 zone_events = ZoneEventDetector()
-zone_engine = ZoneEngine(ZONES)
-event_engine = EventEngine()
 event_engine = EventEngine()
 crowd_detector = CrowdDetector()
+aggression_detector = AggressionDetector()
+event_reliability = EventReliability()
+event_manager = EventManager()
+fall_detector = FallDetector()
 
 
-VIDEO_PATH = "demo/istockphoto-1995820194-640_adpp_is.mp4"
-
+VIDEO_PATH = "../../../demo/istockphoto-1995820194-640_adpp_is.mp4"
 
 video = VideoPipeline(VIDEO_PATH)
 tracker = ObjectTracker()
@@ -35,13 +39,58 @@ while True:
     result = tracker.track(frame)
 
     crowd_event = None
+    boxes = []
+    track_ids = []
 
     if result.boxes.id is not None:
         track_ids = result.boxes.id.int().cpu().tolist()
+        boxes = result.boxes.xyxy.cpu().tolist()
+
         crowd_event = crowd_detector.detect(track_ids)
 
         if crowd_event is not None:
             print(f"CROWD EVENT: {crowd_event}")
+
+            if event_reliability.is_reliable(crowd_event):
+                stored_event = event_manager.process_event(crowd_event)
+
+                if stored_event is not None:
+                    print(
+                        "STORED CROWD EVENT:",
+                        json.dumps(stored_event.to_dict(), indent=2)
+                    )
+
+        aggression_event = aggression_detector.detect(boxes)
+
+        if aggression_event is not None:
+            print(f"AGGRESSION EVENT: {aggression_event}")
+
+            if event_reliability.is_reliable(aggression_event):
+                stored_event = event_manager.process_event(aggression_event)
+
+                if stored_event is not None:
+                    print(
+                        "STORED AGGRESSION EVENT:",
+                        json.dumps(stored_event.to_dict(), indent=2)
+                    )
+
+
+        for box, track_id in zip(boxes, track_ids):
+            fall_event = fall_detector.detect(box)
+
+            if fall_event is not None:
+                fall_event.track_id = track_id
+
+                print(f"FALL EVENT: {fall_event}")
+
+                if event_reliability.is_reliable(fall_event):
+                    stored_event = event_manager.process_event(fall_event)
+
+                    if stored_event is not None:
+                        print(
+                            "STORED FALL EVENT:",
+                            json.dumps(stored_event.to_dict(), indent=2)
+                        )
 
     # Draw YOLO detections
     annotated_frame = result.plot()
@@ -85,13 +134,18 @@ while True:
         if event is not None:
             print(f"ZONE EVENT: {event}")
 
-            security_event = event_engine.process_zone_event(event)
+        security_event = event_engine.process_zone_event(event)
 
-            if security_event is not None:
-                            print(
-                "SECURITY EVENT:",
-                json.dumps(security_event, indent=2)
-            )
+        if security_event is not None:
+            if event_reliability.is_reliable(security_event):
+                stored_event = event_manager.process_event(security_event)
+
+                if stored_event is not None:
+                    print(
+                        "STORED SECURITY EVENT:",
+                        json.dumps(stored_event.to_dict(), indent=2)
+                    )
+
     cv2.imshow("GuardX - Zone Engine", annotated_frame)
 
     if cv2.waitKey(1) & 0xFF == ord("q"):

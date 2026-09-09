@@ -1,4 +1,6 @@
-from event_definitions import EventTypes, create_event
+from event_definitions import EventTypes
+from event_schema import SecurityEvent
+import time
 
 
 class EventEngine:
@@ -14,10 +16,11 @@ class EventEngine:
             event_type == "ZONE_ENTRY"
             and zone == "restricted_area"
         ):
-            return create_event(
-                EventTypes.RESTRICTED_ZONE_ENTRY,
-                track_id,
-                zone
+            return SecurityEvent(
+                event_type=EventTypes.RESTRICTED_ZONE_ENTRY,
+                timestamp=time.time(),
+                track_id=track_id,
+                zone=zone
             )
 
         return None

@@ -13,6 +13,7 @@ from api.event_store import event_store
 from risk.context_engine import context_engine
 from risk.simulator import response_simulator
 from api.incident_manager import incident_manager
+from api.incident_manager import incident_manager
 from risk.responder_optimizer import responder_optimizer
 
 
@@ -329,4 +330,31 @@ def get_calendar_events():
     return {
         "status": "success",
         "events": event_store.get_events(),
+    }
+
+@router.post("/api/workflow/process")
+def process_complete_workflow(payload: Dict[str, Any]):
+    event = payload.get("event", payload)
+
+    # Step 1: Build context and calculate risk
+    context_data = context_engine.build_context(event)
+    event.update(context_data)
+
+    risk_result = risk_engine.calculate_risk(event)
+    event.update(risk_result)
+
+    # Step 2: Create an incident
+    incident = incident_manager.create_incident(event)
+
+    # Step 3: Recommend a responder
+    responder_result = responder_optimizer.recommend(event)
+
+    return {
+        "status": "success",
+        "workflow": {
+            "event": event,
+            "risk": risk_result,
+            "incident": incident,
+            "responder_recommendation": responder_result,
+        },
     }

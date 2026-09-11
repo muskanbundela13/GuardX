@@ -11,6 +11,7 @@ from api.event_deduplicator import event_deduplicator
 from api.event_store import event_store
 
 from risk.context_engine import context_engine
+from risk.simulator import response_simulator
 
 
 router = APIRouter(
@@ -170,11 +171,35 @@ def calculate_risk(payload: Dict[str, Any]):
 
 @router.post("/api/simulate")
 def simulate_response(payload: Dict[str, Any]):
-    return {
-        "status": "pending",
-        "message": "What-if simulator will be connected later",
-        "input": payload,
-    }
+    current_risk = payload.get("current_risk")
+
+    if current_risk is None:
+        return {
+            "status": "error",
+            "message": "current_risk is required",
+        }
+
+    try:
+        current_risk = float(current_risk)
+    except (TypeError, ValueError):
+        return {
+            "status": "error",
+            "message": "current_risk must be numeric",
+        }
+
+    current_risk = max(0, min(100, current_risk))
+
+    strategy = payload.get("strategy")
+
+    if strategy:
+        return response_simulator.simulate(
+            current_risk,
+            strategy
+        )
+
+    return response_simulator.compare_strategies(
+        current_risk
+    )
 
 
 @router.post("/api/recommend")

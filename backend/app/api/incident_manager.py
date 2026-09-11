@@ -62,6 +62,21 @@ class IncidentManager:
 
         return incident
 
+    def find_open_incident(
+        self,
+        event_type: str,
+        zone: str,
+    ):
+        for incident in self.incidents.values():
+            if (
+                incident["status"] == "OPEN"
+                and incident["latest_event"].get("event_type") == event_type
+                and incident["latest_event"].get("zone") == zone
+            ):
+                return incident
+
+        return None
+
     def get_incident(self, incident_id: str):
         return self.incidents.get(incident_id)
 

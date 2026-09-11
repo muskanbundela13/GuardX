@@ -344,7 +344,20 @@ def process_complete_workflow(payload: Dict[str, Any]):
     event.update(risk_result)
 
     # Step 2: Create an incident
-    incident = incident_manager.create_incident(event)
+    existing_incident = incident_manager.find_open_incident(
+        event_type=event.get("event_type", ""),
+        zone=event.get("zone", ""),
+    )
+
+    if existing_incident:
+        incident = incident_manager.add_event(
+            existing_incident["incident_id"],
+            event,
+        )
+        incident_action = "event_added_to_existing_incident"
+    else:
+        incident = incident_manager.create_incident(event)
+        incident_action = "new_incident_created"
 
     # Step 3: Recommend a responder
     responder_result = responder_optimizer.recommend(event)
@@ -355,6 +368,7 @@ def process_complete_workflow(payload: Dict[str, Any]):
             "event": event,
             "risk": risk_result,
             "incident": incident,
+            "incident_action": incident_action,
             "responder_recommendation": responder_result,
         },
     }

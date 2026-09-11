@@ -12,8 +12,7 @@ from api.event_store import event_store
 
 
 router = APIRouter(
-    prefix="/api/events",
-    tags=["CV Events"]
+    tags=["GuardX Backend"]
 )
 
 
@@ -36,44 +35,33 @@ class CVEventResponse(BaseModel):
     total_events_received: int
 
 
-@router.post("/ingest", response_model=CVEventResponse)
-def ingest_cv_event(event: CVEventRequest):
-
+def process_cv_event(event: CVEventRequest):
     if event.reliability_score is not None:
         if not 0 <= event.reliability_score <= 100:
             raise HTTPException(
                 status_code=400,
-                detail="reliability_score must be between 0 and 100"
+                detail="reliability_score must be between 0 and 100",
             )
 
     if event.confidence is not None:
         if not 0 <= event.confidence <= 1:
             raise HTTPException(
                 status_code=400,
-                detail="confidence must be between 0 and 1"
+                detail="confidence must be between 0 and 1",
             )
 
     event_data = event.model_dump()
 
     event_data["event_id"] = str(uuid.uuid4())
-
-    event_data["received_at"] = datetime.now(
-        timezone.utc
-    ).isoformat()
+    event_data["received_at"] = datetime.now(timezone.utc).isoformat()
 
     event_data["evidence"] = {
         "source": "GuardX CV pipeline",
-        "frame_number": event_data.get(
-            "details",
-            {}
-        ).get("frame_number"),
-        "video_timestamp": event_data.get("timestamp"),
-        "evidence_path": event_data.get(
-            "details",
-            {}
-        ).get("evidence_path"),
+        "frame_number": event_data["details"].get("frame_number"),
+        "video_timestamp": event_data["timestamp"],
+        "evidence_path": event_data["details"].get("evidence_path"),
         "privacy_mode": "no_face_recognition",
-        "temporary_tracking_only": True
+        "temporary_tracking_only": True,
     }
 
     if not event_deduplicator.should_accept(event_data):
@@ -83,14 +71,11 @@ def ingest_cv_event(event: CVEventRequest):
             "event": event_data,
             "risk": {},
             "response": {},
-            "total_events_received": event_store.get_event_count()
+            "total_events_received": event_store.get_event_count(),
         }
 
     risk_result = risk_engine.calculate_risk(event_data)
-
-    response_result = response_engine.decide(
-        risk_result
-    )
+    response_result = response_engine.decide(risk_result)
 
     event_data["risk"] = risk_result
     event_data["response"] = response_result
@@ -103,24 +88,151 @@ def ingest_cv_event(event: CVEventRequest):
         "event": event_data,
         "risk": risk_result,
         "response": response_result,
-        "total_events_received": event_store.get_event_count()
+        "total_events_received": event_store.get_event_count(),
     }
 
 
-@router.get("")
+# Existing Member 1 endpoint
+@router.post("/api/events/ingest", response_model=CVEventResponse)
+def ingest_cv_event(event: CVEventRequest):
+    return process_cv_event(event)
+
+
+# Member 2 endpoint
+@router.post("/api/detect")
+def detect_event(event: CVEventRequest):
+    return process_cv_event(event)
+
+
+@router.get("/api/events")
 def get_received_events():
     return {
         "status": "success",
         "total_events": event_store.get_event_count(),
-        "events": event_store.get_events()
+        "events": event_store.get_events(),
     }
 
 
-@router.delete("")
+@router.delete("/api/events")
 def clear_received_events():
     event_store.clear_events()
 
     return {
         "status": "success",
-        "message": "Received CV events cleared"
+        "message": "Received CV events cleared",
+    }
+
+
+@router.get("/api/incidents")
+def get_incidents():
+    return {
+        "status": "success",
+        "total_incidents": event_store.get_event_count(),
+        "incidents": event_store.get_events(),
+    }
+
+
+@router.get("/api/incidents/{incident_id}")
+def get_incident(incident_id: str):
+    for event in event_store.get_events():
+        if event.get("event_id") == incident_id:
+            return {
+                "status": "success",
+                "incident": event,
+            }
+
+    raise HTTPException(
+        status_code=404,
+        detail="Incident not found",
+    )
+
+
+@router.post("/api/risk/calculate")
+def calculate_risk(payload: Dict[str, Any]):
+    return {
+        "status": "pending",
+        "message": "Risk calculation endpoint is ready",
+        "input": payload,
+    }
+
+
+@router.post("/api/simulate")
+def simulate_response(payload: Dict[str, Any]):
+    return {
+        "status": "pending",
+        "message": "What-if simulator will be connected later",
+        "input": payload,
+    }
+
+
+@router.post("/api/recommend")
+def recommend_response(payload: Dict[str, Any]):
+    return {
+        "status": "pending",
+        "message": "Response optimizer will be connected later",
+        "input": payload,
+    }
+
+
+@router.get("/api/responders")
+def get_responders():
+    return {
+        "status": "success",
+        "responders": [],
+    }
+
+
+@router.get("/api/map")
+def get_map_data():
+    return {
+        "status": "success",
+        "zones": [],
+    }
+
+
+@router.get("/api/analytics")
+def get_analytics():
+    events = event_store.get_events()
+
+    risk_distribution = {
+        "LOW": 0,
+        "MEDIUM": 0,
+        "HIGH": 0,
+        "CRITICAL": 0,
+    }
+
+    for event in events:
+        risk_level = event.get("risk", {}).get("risk_level")
+
+        if risk_level in risk_distribution:
+            risk_distribution[risk_level] += 1
+
+    return {
+        "status": "success",
+        "total_events": len(events),
+        "risk_distribution": risk_distribution,
+    }
+
+
+@router.get("/api/heatmap")
+def get_heatmap():
+    return {
+        "status": "success",
+        "heatmap": [],
+    }
+
+
+@router.get("/api/patrol-route")
+def get_patrol_route():
+    return {
+        "status": "success",
+        "route": [],
+    }
+
+
+@router.get("/api/events/calendar")
+def get_calendar_events():
+    return {
+        "status": "success",
+        "events": event_store.get_events(),
     }

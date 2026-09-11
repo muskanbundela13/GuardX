@@ -23,8 +23,15 @@ class CVEventRequest(BaseModel):
     zone: Optional[str] = None
     confidence: Optional[float] = None
     reliability_score: Optional[float] = None
-    details: Dict[str, Any] = Field(default_factory=dict)
 
+    details: Dict[str, Any] = Field(default_factory=dict)
+    time_anomaly: Optional[float] = None
+    zone_sensitivity: Optional[float] = None
+    crowd_anomaly: Optional[float] = None
+    access_violation: Optional[float] = None
+    predicted_baseline_risk: Optional[float] = None
+
+    details: Dict[str, Any] = Field(default_factory=dict)
 
 class CVEventResponse(BaseModel):
     status: str

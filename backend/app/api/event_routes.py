@@ -12,6 +12,7 @@ from api.event_store import event_store
 
 from risk.context_engine import context_engine
 from risk.simulator import response_simulator
+from risk.responder_optimizer import responder_optimizer
 
 
 router = APIRouter(
@@ -204,18 +205,19 @@ def simulate_response(payload: Dict[str, Any]):
 
 @router.post("/api/recommend")
 def recommend_response(payload: Dict[str, Any]):
-    return {
-        "status": "pending",
-        "message": "Response optimizer will be connected later",
-        "input": payload,
-    }
+    event = payload.get("event", payload)
+
+    return responder_optimizer.recommend(event)
 
 
 @router.get("/api/responders")
 def get_responders():
     return {
         "status": "success",
-        "responders": [],
+        "total_responders": len(
+            responder_optimizer.get_all_responders()
+        ),
+        "responders": responder_optimizer.get_all_responders(),
     }
 
 

@@ -10,6 +10,8 @@ from risk.response_engine import response_engine
 from api.event_deduplicator import event_deduplicator
 from api.event_store import event_store
 
+from risk.context_engine import context_engine
+
 
 router = APIRouter(
     tags=["GuardX Backend"]
@@ -58,6 +60,9 @@ def process_cv_event(event: CVEventRequest):
             )
 
     event_data = event.model_dump()
+
+    context_data = context_engine.build_context(event_data)
+    event_data.update(context_data)
 
     event_data["event_id"] = str(uuid.uuid4())
     event_data["received_at"] = datetime.now(timezone.utc).isoformat()

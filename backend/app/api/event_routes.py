@@ -12,6 +12,7 @@ from api.event_store import event_store
 
 from risk.context_engine import context_engine
 from risk.simulator import response_simulator
+from api.incident_manager import incident_manager
 from risk.responder_optimizer import responder_optimizer
 
 
@@ -141,19 +142,73 @@ def clear_received_events():
 def get_incidents():
     return {
         "status": "success",
-        "total_incidents": event_store.get_event_count(),
-        "incidents": event_store.get_events(),
+        "total_incidents": len(incident_manager.get_all_incidents()),
+        "incidents": incident_manager.get_all_incidents(),
     }
 
 
 @router.get("/api/incidents/{incident_id}")
 def get_incident(incident_id: str):
-    for event in event_store.get_events():
-        if event.get("event_id") == incident_id:
-            return {
-                "status": "success",
-                "incident": event,
-            }
+    incident = incident_manager.get_incident(incident_id)
+
+    if incident is None:
+        return {
+            "status": "error",
+            "message": "Incident not found",
+        }
+
+    return {
+        "status": "success",
+        "incident": incident,
+    }
+
+
+@router.post("/api/incidents")
+def create_incident(payload: Dict[str, Any]):
+    event = payload.get("event", payload)
+
+    incident = incident_manager.create_incident(event)
+
+    return {
+        "status": "success",
+        "incident": incident,
+    }
+
+
+@router.post("/api/incidents/{incident_id}/events")
+def add_event_to_incident(
+    incident_id: str,
+    payload: Dict[str, Any],
+):
+    event = payload.get("event", payload)
+
+    result = incident_manager.add_event(incident_id, event)
+
+    if result.get("status") == "error":
+        return result
+
+    return {
+        "status": "success",
+        "incident": result,
+    }
+
+
+@router.patch("/api/incidents/{incident_id}/status")
+def update_incident_status(
+    incident_id: str,
+    payload: Dict[str, Any],
+):
+    status = payload.get("status", "").upper()
+
+    result = incident_manager.update_status(incident_id, status)
+
+    if result.get("status") == "error":
+        return result
+
+    return {
+        "status": "success",
+        "incident": result,
+    }
 
     raise HTTPException(
         status_code=404,

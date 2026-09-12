@@ -1,20 +1,19 @@
 import uuid
+
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from risk.risk_engine import risk_engine
-from risk.response_engine import response_engine
-from api.event_deduplicator import event_deduplicator
-from api.event_store import event_store
-
-from risk.context_engine import context_engine
-from risk.simulator import response_simulator
-from api.incident_manager import incident_manager
-from api.incident_manager import incident_manager
-from risk.responder_optimizer import responder_optimizer
+from app.risk.risk_engine import risk_engine
+from app.risk.response_engine import response_engine
+from app.api.event_deduplicator import event_deduplicator
+from app.api.event_store import event_store
+from app.risk.context_engine import context_engine
+from app.risk.simulator import response_simulator
+from app.api.incident_manager import incident_manager
+from app.risk.responder_optimizer import responder_optimizer
 
 
 router = APIRouter(

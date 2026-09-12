@@ -1,5 +1,5 @@
-from crowd_detector import CrowdDetector
-from event_manager import EventManager
+from app.cv.crowd_detector import CrowdDetector
+from app.cv.event_manager import EventManager
 
 
 detector = CrowdDetector()

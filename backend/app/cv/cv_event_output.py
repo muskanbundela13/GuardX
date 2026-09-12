@@ -1,4 +1,4 @@
-from event_schema import SecurityEvent
+from app.cv.event_schema import SecurityEvent
 
 
 class CVEventOutput:
@@ -7,7 +7,14 @@ class CVEventOutput:
         self.output_events = []
 
     def create_output(self, event):
-        if not isinstance(event, SecurityEvent):
+        if event is None:
+            return None
+
+        if not (
+            hasattr(event, "event_type")
+            and hasattr(event, "timestamp")
+            and hasattr(event, "details")
+        ):
             return None
 
         output = {

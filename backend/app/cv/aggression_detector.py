@@ -1,8 +1,8 @@
 import time
 
-from aggression_config import AGGRESSION_DISTANCE_THRESHOLD
-from aggression_event_debouncer import AggressionEventDebouncer
-from event_schema import SecurityEvent
+from app.cv.aggression_config import AGGRESSION_DISTANCE_THRESHOLD
+from app.cv.aggression_event_debouncer import AggressionEventDebouncer
+from app.cv.event_schema import SecurityEvent
 
 
 class AggressionDetector:

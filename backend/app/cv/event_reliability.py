@@ -1,10 +1,10 @@
-from reliability_config import (
+from app.cv.reliability_config import (
     CONFIDENCE_THRESHOLD,
     EVENT_COOLDOWN_SECONDS
 )
 
-from event_validator import EventValidator
-from event_deduplicator import EventDeduplicator
+from app.cv.event_validator import EventValidator
+from app.cv.event_deduplicator import EventDeduplicator
 
 
 class EventReliability:

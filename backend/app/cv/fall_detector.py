@@ -1,11 +1,11 @@
 import time
 
-from fall_config import (
+from app.cv.fall_config import (
     FALL_ASPECT_RATIO_THRESHOLD,
     FALL_HEIGHT_THRESHOLD
 )
-from event_schema import SecurityEvent
-from fall_event_debouncer import FallEventDebouncer
+from app.cv.event_schema import SecurityEvent
+from app.cv.fall_event_debouncer import FallEventDebouncer
 
 
 class FallDetector:

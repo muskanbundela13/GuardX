@@ -1,7 +1,7 @@
 import time
-from crowd_event_debouncer import CrowdEventDebouncer
-from crowd_config import CROWD_THRESHOLD
-from event_schema import SecurityEvent
+from app.cv.crowd_event_debouncer import CrowdEventDebouncer
+from app.cv.crowd_config import CROWD_THRESHOLD
+from app.cv.event_schema import SecurityEvent
 
 
 class CrowdDetector:

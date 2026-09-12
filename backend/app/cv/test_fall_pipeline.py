@@ -1,6 +1,6 @@
-from fall_detector import FallDetector
-from event_manager import EventManager
-from event_reliability import EventReliability
+from app.cv.fall_detector import FallDetector
+from app.cv.event_manager import EventManager
+from app.cv.event_reliability import EventReliability
 
 
 detector = FallDetector()

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from api.event_routes import router as event_router
+from app.api.event_routes import router as event_router
 
 
 app = FastAPI(

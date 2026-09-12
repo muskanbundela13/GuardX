@@ -1,6 +1,6 @@
-from aggression_detector import AggressionDetector
-from event_reliability import EventReliability
-from event_manager import EventManager
+from app.cv.aggression_detector import AggressionDetector
+from app.cv.event_reliability import EventReliability
+from app.cv.event_manager import EventManager
 
 
 detector = AggressionDetector()

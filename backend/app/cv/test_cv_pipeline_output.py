@@ -1,9 +1,9 @@
 import time
 
-from event_schema import SecurityEvent
-from event_reliability import EventReliability
-from event_manager import EventManager
-from cv_event_output import CVEventOutput
+from app.cv.event_schema import SecurityEvent
+from app.cv.event_reliability import EventReliability
+from app.cv.event_manager import EventManager
+from app.cv.cv_event_output import CVEventOutput
 
 
 event_reliability = EventReliability(

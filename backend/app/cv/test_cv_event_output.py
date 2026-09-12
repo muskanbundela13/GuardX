@@ -1,149 +1,65 @@
-import time
-
-from event_schema import SecurityEvent
-from cv_event_output import CVEventOutput
+from app.cv.cv_event_output import CVEventOutput
+from app.cv.event_schema import SecurityEvent
 
 
-output_system = CVEventOutput()
+def test_create_output_from_valid_event():
+    event = SecurityEvent(
+        event_type="RESTRICTED_ZONE_ENTRY",
+        timestamp=1000,
+        track_id=43,
+        zone="restricted_area",
+        confidence=0.95,
+        details={"reliability_score": 0.88},
+    )
+
+    output_system = CVEventOutput()
+    output = output_system.create_output(event)
+
+    assert output is not None
+    assert output["event_type"] == "RESTRICTED_ZONE_ENTRY"
+    assert output["timestamp"] == 1000
+    assert output["track_id"] == 43
+    assert output["zone"] == "restricted_area"
+    assert output["confidence"] == 0.95
+    assert output["reliability_score"] == 0.88
 
 
-# --------------------------------------------------
-# Restricted Zone Event
-# --------------------------------------------------
+def test_create_output_rejects_invalid_object():
+    output_system = CVEventOutput()
 
-zone_event = SecurityEvent(
-    event_type="RESTRICTED_ZONE_ENTRY",
-    timestamp=time.time(),
-    track_id=43,
-    zone="restricted_area",
-    confidence=None,
-    details={
-        "reliability_score": 80
-    }
-)
+    output = output_system.create_output(
+        {"event_type": "CROWD_ANOMALY"}
+    )
+
+    assert output is None
 
 
-zone_output = output_system.publish(zone_event)
+def test_publish_stores_output():
+    event = SecurityEvent(
+        event_type="CROWD_ANOMALY",
+        timestamp=1001,
+        track_id=12,
+        zone="main_gate",
+        confidence=0.90,
+    )
 
-print("Restricted Zone Output:")
-print(zone_output)
+    output_system = CVEventOutput()
+    output = output_system.publish(event)
 
-
-assert zone_output["event_type"] == "RESTRICTED_ZONE_ENTRY"
-assert zone_output["track_id"] == 43
-assert zone_output["zone"] == "restricted_area"
-assert zone_output["reliability_score"] == 80
-
-
-# --------------------------------------------------
-# Crowd Event
-# --------------------------------------------------
-
-crowd_event = SecurityEvent(
-    event_type="CROWD_ANOMALY",
-    timestamp=time.time(),
-    details={
-        "crowd_count": 5,
-        "threshold": 3,
-        "reliability_score": 80
-    }
-)
+    assert output is not None
+    assert len(output_system.get_outputs()) == 1
+    assert output_system.get_outputs()[0]["event_type"] == "CROWD_ANOMALY"
 
 
-crowd_output = output_system.publish(crowd_event)
+def test_clear_removes_outputs():
+    event = SecurityEvent(
+        event_type="CROWD_ANOMALY",
+        timestamp=1001,
+    )
 
-print("\nCrowd Output:")
-print(crowd_output)
+    output_system = CVEventOutput()
+    output_system.publish(event)
 
+    output_system.clear()
 
-assert crowd_output["event_type"] == "CROWD_ANOMALY"
-assert crowd_output["details"]["crowd_count"] == 5
-assert crowd_output["reliability_score"] == 80
-
-
-# --------------------------------------------------
-# Aggression Event
-# --------------------------------------------------
-
-aggression_event = SecurityEvent(
-    event_type="AGGRESSION_LIKE_EVENT",
-    timestamp=time.time(),
-    details={
-        "distance": 32.5,
-        "person_1": 0,
-        "person_2": 1,
-        "reliability_score": 80
-    }
-)
-
-
-aggression_output = output_system.publish(
-    aggression_event
-)
-
-print("\nAggression Output:")
-print(aggression_output)
-
-
-assert (
-    aggression_output["event_type"]
-    == "AGGRESSION_LIKE_EVENT"
-)
-
-assert aggression_output["details"]["distance"] == 32.5
-assert aggression_output["reliability_score"] == 80
-
-
-# --------------------------------------------------
-# Fall-like Event
-# --------------------------------------------------
-
-fall_event = SecurityEvent(
-    event_type="FALL_LIKE_EVENT",
-    timestamp=time.time(),
-    track_id=101,
-    details={
-        "aspect_ratio": 1.5,
-        "width": 120,
-        "height": 80,
-        "reliability_score": 85
-    }
-)
-
-
-fall_output = output_system.publish(fall_event)
-
-print("\nFall Output:")
-print(fall_output)
-
-
-assert fall_output["event_type"] == "FALL_LIKE_EVENT"
-assert fall_output["track_id"] == 101
-assert fall_output["reliability_score"] == 85
-
-
-# --------------------------------------------------
-# Invalid Event
-# --------------------------------------------------
-
-invalid_output = output_system.publish(None)
-
-print("\nInvalid Output:")
-print(invalid_output)
-
-assert invalid_output is None
-
-
-# --------------------------------------------------
-# Stored Outputs
-# --------------------------------------------------
-
-outputs = output_system.get_outputs()
-
-print("\nTotal Outputs:")
-print(len(outputs))
-
-assert len(outputs) == 4
-
-
-print("\nCV Event Output contract passed.")
+    assert output_system.get_outputs() == []

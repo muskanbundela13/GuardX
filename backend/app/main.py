@@ -364,6 +364,54 @@ def update_incident(incident_id: str, update: IncidentUpdate):
     connection.close()
     return get_incident(incident_id)
 
+@app.post("/api/incidents/{incident_id}/resolve")
+def resolve_incident(incident_id: str):
+    connection = get_connection()
+
+    incident = connection.execute(
+        """
+        SELECT related_event_ids
+        FROM incidents
+        WHERE incident_id = ?
+        """,
+        (incident_id,),
+    ).fetchone()
+
+    if incident is None:
+        connection.close()
+        raise HTTPException(
+            status_code=404,
+            detail="Incident not found",
+        )
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    connection.execute(
+        """
+        UPDATE incidents
+        SET status = ?,
+            updated_at = ?,
+            resolved_at = ?
+        WHERE incident_id = ?
+        """,
+        ("RESOLVED", now, now, incident_id),
+    )
+
+    if incident["related_event_ids"]:
+        connection.execute(
+            """
+            UPDATE events
+            SET status = ?
+            WHERE id = ?
+            """,
+            ("RESOLVED", int(incident["related_event_ids"])),
+        )
+
+    connection.commit()
+    connection.close()
+
+    return get_incident(incident_id)
+
 @app.post("/api/incidents/{incident_id}/assign")
 def assign_incident(incident_id: str, assignment: dict[str, Any]):
     responder_id = assignment.get("responder_id")

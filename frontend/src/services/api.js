@@ -33,18 +33,15 @@ export function getIncidents() {
   return request("/api/incidents");
 }
 
-export function getIncident(incidentId) {
-  return request(`/api/incidents/${encodeURIComponent(incidentId)}`);
+export async function updateIncident(incidentId, update) {
+  return request(`/api/incidents/${incidentId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify(update),
+  });
 }
 
-export function updateIncident(incidentId, update) {
-  return request(
-    `/api/incidents/${encodeURIComponent(incidentId)}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(update),
-    }
-  );
+export async function getIncident(incidentId) {
+  return request(`/api/incidents/${incidentId}`);
 }
 
 export function getResponders() {
@@ -77,5 +74,11 @@ export function updateVideoProgress(progress) {
   return request("/api/video/progress", {
     method: "POST",
     body: JSON.stringify(progress),
+  });
+}
+
+export async function resolveIncident(incidentId) {
+  return request(`/api/incidents/${incidentId}/resolve`, {
+    method: "POST",
   });
 }

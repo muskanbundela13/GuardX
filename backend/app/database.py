@@ -62,7 +62,7 @@ def initialize_database():
             priority TEXT NOT NULL,
             risk_score REAL NOT NULL,
             risk_level TEXT NOT NULL,
-            status TEXT DEFAULT 'NEW',
+            status TEXT DEFAULT 'OPEN',
             location TEXT,
             camera_id TEXT,
             zone_id TEXT,
@@ -81,10 +81,11 @@ def initialize_database():
     """)
 
     try:
-        connection.execute("ALTER TABLE incidents ADD COLUMN notes TEXT DEFAULT ''")
-    except sqlite3.OperationalError as error:
-        if "duplicate column name" not in str(error).lower():
-            raise
+        connection.execute(
+            "UPDATE incidents SET status = 'OPEN' WHERE status = 'NEW'"
+        )
+    except sqlite3.OperationalError:
+        pass
 
     connection.commit()
     connection.close()

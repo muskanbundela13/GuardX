@@ -10,6 +10,7 @@ import {
   getIncidents,
   getIncident,
   updateIncident,
+  resolveIncident,
   getResponders,
   getVideoSession,
   startVideoSession,
@@ -62,6 +63,8 @@ export default function App() {
   const [incidentError, setIncidentError] = useState("");
   const [incidentSuccess, setIncidentSuccess] = useState("");
   const [incidentNotes, setIncidentNotes] = useState("");
+  const [incidentStatus, setIncidentStatus] = useState("OPEN");
+  const activeIncident = selectedIncident || selected;
   const [queuedVideoEvent, setQueuedVideoEvent] = useState(null);
   const [score,setScore] = useState(42);
   const [backendEvents, setBackendEvents] = useState([]);
@@ -81,6 +84,7 @@ export default function App() {
   const [videoTime, setVideoTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const lastProgressUpdate = useRef(0);
+  
 
   useEffect(() => {
   async function testBackend() {
@@ -164,69 +168,119 @@ export default function App() {
     setQueuedVideoEvent(null);
   }, [queuedVideoEvent, page, videoDuration]);
 
-  async function handleSaveIncident() {
-    console.log("Save button clicked");
+  async function handleResolveIncident() {
+    const incidentId = activeIncident?.incident_id;
 
-    if (!selected) {
-      console.log("No selected incident");
+    if (!incidentId) {
+      setIncidentError("Incident ID is missing");
       return;
     }
-
-    await saveIncident({
-      status: selected.status || "OPEN",
-      notes: incidentNotes,
-    });
-  }
-
-  async function openIncident(incident) {
-    console.log("OPENED INCIDENT OBJECT:", incident);
-    setIncidentStatus(detail.status || "OPEN");
-    setIncidentLoading(true);
-    setIncidentError("");
-    setIncidentSuccess("");
-    try {
-      const incidentId =
-        selected.incident_id ||
-        selected.id ||
-        selected.incidentId;
-
-      if (!incidentId) {
-        setIncidentError("Incident ID is missing.");
-        setIncidentSaving(false);
-        return;
-      }
-
-      const detail = await updateIncident(incidentId, update);
-      setSelectedIncident(detail);
-      setIncidentNotes(detail.notes || "");
-    } catch (error) {
-      setSelectedIncident(null);
-      setIncidentError(error.message || "Could not load incident details.");
-    } finally {
-      setIncidentLoading(false);
-    }
-  }
-
-  async function saveIncident(update) {
-    if (!selected) return;
 
     setIncidentSaving(true);
     setIncidentError("");
     setIncidentSuccess("");
 
     try {
-      const detail = await updateIncident(selected.incident_id, update);
+      const detail = await resolveIncident(incidentId);
 
       setSelected(detail);
+      setSelectedIncident(detail);
+      setIncidentStatus(detail.status || "RESOLVED");
       setIncidentNotes(detail.notes || "");
-      setIncidents((current) => current.map((item) =>
-        item.incident_id === detail.incident_id ? detail : item
-      ));
-      setIncidentSuccess("Incident saved.");
+      setIncidentSuccess("Incident marked as resolved");
+
+      const refreshedIncidents = await getIncidents();
+
+      setIncidents(
+        Array.isArray(refreshedIncidents)
+          ? refreshedIncidents
+          : refreshedIncidents.incidents || []
+      );
     } catch (error) {
-      setIncidentError(error.message || "Could not save incident changes.");
+      setIncidentError(
+        error.message || "Failed to resolve incident"
+      );
     } finally {
       setIncidentSaving(false);
+    }
+  }
+
+  async function handleSaveIncident() {
+    const incident = selectedIncident || selected;
+
+    console.log("Save button clicked:", incident);
+
+    if (!incident?.incident_id) {
+      setIncidentError("No selected incident");
+      return;
+    }
+
+    await saveIncident({
+      status: incidentStatus || incident.status || "OPEN",
+      notes: incidentNotes,
+    });
+  }
+
+  async function saveIncident(update) {
+    const incident = selectedIncident || selected;
+    const incidentId = incident?.incident_id;
+
+    if (!incidentId) {
+      setIncidentError("Incident ID is missing");
+      return;
+    }
+
+    setIncidentSaving(true);
+    setIncidentError("");
+    setIncidentSuccess("");
+
+    try {
+      await updateIncident(incidentId, update);
+
+      const detail = await getIncident(incidentId);
+
+      setSelected(detail);
+      setSelectedIncident(detail);
+      setIncidentStatus(detail.status || update.status || "OPEN");
+      setIncidentNotes(detail.notes || "");
+
+      setIncidents((current) =>
+        current.map((item) =>
+          item.incident_id === detail.incident_id
+            ? { ...item, ...detail }
+            : item
+        )
+      );
+
+      setIncidentSuccess("Incident saved successfully");
+    } catch (error) {
+      setIncidentError(
+        error.message || "Could not save incident changes."
+      );
+    } finally {
+      setIncidentSaving(false);
+    }
+  }
+
+  
+  async function openIncident(incident) {
+    setIncidentLoading(true);
+    setIncidentError("");
+    setIncidentSuccess("");
+
+    try {
+      setSelected(incident);
+
+      const detail = await getIncident(incident.incident_id);
+
+      setSelected(detail);
+      setSelectedIncident(detail);
+      setIncidentStatus(detail.status || "OPEN");
+      setIncidentNotes(detail.notes || "");
+    } catch (error) {
+      setIncidentError(error.message || "Failed to load incident");
+    } finally {
+      setIncidentLoading(false);
     }
   }
 
@@ -943,7 +997,11 @@ const filtered = useMemo(
           <div className="selected">
             <div>
               <small>SELECTED EVENT</small>
-              <h3>{selected.type}</h3>
+              <h3>
+                {formatEventType(
+                  activeIncident?.event_type || activeIncident?.type
+                )}
+              </h3>
               <p>
                 {selected.id} · {selected.location}
               </p>
@@ -959,7 +1017,7 @@ const filtered = useMemo(
           </div>
         )}
       </section>
-        {selected && (
+        {activeIncident && (
           <div className="incident-overlay">
             <div className="incident-modal">
               <button
@@ -973,6 +1031,17 @@ const filtered = useMemo(
                 <X size={18} />
               </button>
 
+              <button
+                type="button"
+                onClick={handleResolveIncident}
+                disabled={
+                  incidentSaving ||
+                  selectedIncident?.status === "RESOLVED"
+                }
+              >
+                {incidentSaving ? "Resolving..." : "Mark as Resolved"}
+              </button>
+
               <p className="eyebrow">SELECTED INCIDENT</p>
               <h2>Incident details</h2>
 
@@ -980,20 +1049,67 @@ const filtered = useMemo(
                 <h3>{selected.type}</h3>
 
                 <p>
-                  <b>Location:</b> {selected.location}
+                  <b>Location:</b>{" "}
+                  {displayValue(
+                    activeIncident?.location ||
+                    activeIncident?.zone_id ||
+                    activeIncident?.zone
+                  )}
                 </p>
 
                 <p>
-                  <b>Risk score:</b> {selected.riskScore}
+                  <b>Risk score:</b>{" "}
+                  {displayValue(
+                    activeIncident?.risk_score ??
+                    activeIncident?.riskScore ??
+                    activeIncident?.reliability_score
+                  )}
                 </p>
 
                 <p>
-                  <b>Risk level:</b> {selected.riskLevel}
+                  <b>Risk level:</b>{" "}
+                  {displayValue(
+                    activeIncident?.risk_level ||
+                    activeIncident?.riskLevel
+                  )}
                 </p>
 
                 <p>
-                  <b>Current status:</b> {selected.status}
+                  <b>Current status:</b>{" "}
+                  {displayValue(
+                    activeIncident?.status || incidentStatus
+                  )}
                 </p>
+
+                <p>
+              <strong>Event ID:</strong>{" "}
+              {selectedIncident?.event_id || "N/A"}
+            </p>
+
+            <p>
+              <strong>Video File:</strong>{" "}
+              {selectedIncident?.video_file_id || "N/A"}
+            </p>
+
+            <p>
+              <strong>Session ID:</strong>{" "}
+              {selectedIncident?.session_id || "N/A"}
+            </p>
+
+            <p>
+              <strong>Camera:</strong>{" "}
+              {selectedIncident?.camera_id || "N/A"}
+            </p>
+
+            <p>
+              <strong>Location:</strong>{" "}
+              {selectedIncident?.location || "N/A"}
+            </p>
+
+            <p>
+              <strong>Detection Time:</strong>{" "}
+              {selectedIncident?.video_timestamp ?? "N/A"}
+            </p>
 
                 <label htmlFor="incident-status">
                   <b>Status</b>
@@ -1001,13 +1117,8 @@ const filtered = useMemo(
 
                 <select
                   id="incident-status"
-                  value={selected.status || "OPEN"}
-                  onChange={(event) =>
-                    setSelected((current) => ({
-                      ...current,
-                      status: event.target.value,
-                    }))
-                  }
+                  value={incidentStatus}
+                  onChange={(event) => setIncidentStatus(event.target.value)}
                 >
                   <option value="OPEN">Open</option>
                   <option value="ACKNOWLEDGED">Acknowledged</option>

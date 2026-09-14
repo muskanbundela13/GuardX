@@ -17,5 +17,9 @@ class VideoPipeline:
 
         return frame
 
+    def current_time(self):
+        milliseconds = self.capture.get(cv2.CAP_PROP_POS_MSEC)
+        return milliseconds / 1000
+
     def release(self):
         self.capture.release()

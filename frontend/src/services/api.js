@@ -33,6 +33,20 @@ export function getIncidents() {
   return request("/api/incidents");
 }
 
+export function getIncident(incidentId) {
+  return request(`/api/incidents/${encodeURIComponent(incidentId)}`);
+}
+
+export function updateIncident(incidentId, update) {
+  return request(
+    `/api/incidents/${encodeURIComponent(incidentId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(update),
+    }
+  );
+}
+
 export function getResponders() {
   return request("/api/responders");
 }

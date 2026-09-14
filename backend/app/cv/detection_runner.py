@@ -1,4 +1,5 @@
 import cv2
+import time
 import numpy as np
 import json
 import urllib.request
@@ -35,6 +36,9 @@ parser.add_argument("--video", required=True)
 args = parser.parse_args()
 
 VIDEO_PATH = args.video
+EVENT_COOLDOWN_SECONDS = 3.0
+
+last_published_event_times = {}
 
 def send_event_to_backend(event):
     url = "http://127.0.0.1:8000/api/events"
@@ -55,6 +59,7 @@ def send_event_to_backend(event):
 
     return result
 
+
 def publish_backend_event(stored_event, event_label):
     if stored_event is None:
         return None
@@ -62,26 +67,20 @@ def publish_backend_event(stored_event, event_label):
     backend_event = cv_event_output.publish(stored_event)
 
     if backend_event is not None:
+        # The event timestamp is wall-clock time; video_timestamp is the
+        # playback position required to seek from an incident to its evidence.
+        backend_event["video_timestamp"] = video.current_time()
+
         print(
             f"CV HANDOFF EVENT ({event_label}):",
             json.dumps(backend_event, indent=2)
         )
 
         try:
-            backend_response = send_event_to_backend(
-                backend_event
-            )
-
-            print(
-                "BACKEND RESPONSE:",
-                backend_response["message"]
-            )
-
+            backend_response = send_event_to_backend(backend_event)
+            print("BACKEND RESPONSE:", backend_response.get("status", "success"))
         except Exception as error:
-            print(
-                "BACKEND HANDOFF FAILED:",
-                error
-            )
+            print("BACKEND HANDOFF FAILED:", error)
 
     return backend_event
 

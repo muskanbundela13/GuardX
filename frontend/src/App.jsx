@@ -8,6 +8,8 @@ import {
   getEvents,
   getAnalytics,
   getIncidents,
+  getIncident,
+  updateIncident,
   getResponders,
   getVideoSession,
   startVideoSession,
@@ -42,12 +44,25 @@ function formatVideoTime(seconds) {
   ).padStart(2, "0")}`;
 }
 
+function displayValue(value) {
+  return value === null || value === undefined || value === ""
+    ? "Not available"
+    : String(value);
+}
+
 export default function App() {
   const [page,setPage] = useState("Dashboard");
   const [dark,setDark] = useState(true);
   const [query,setQuery] = useState("");
   const [mobile,setMobile] = useState(false);
   const [selected,setSelected] = useState(null);
+  const [selectedIncident, setSelectedIncident] = useState(null);
+  const [incidentLoading, setIncidentLoading] = useState(false);
+  const [incidentSaving, setIncidentSaving] = useState(false);
+  const [incidentError, setIncidentError] = useState("");
+  const [incidentSuccess, setIncidentSuccess] = useState("");
+  const [incidentNotes, setIncidentNotes] = useState("");
+  const [queuedVideoEvent, setQueuedVideoEvent] = useState(null);
   const [score,setScore] = useState(42);
   const [backendEvents, setBackendEvents] = useState([]);
   const [analytics, setAnalytics] = useState(null);
@@ -142,6 +157,93 @@ export default function App() {
   useEffect(() => {
     loadVideoSession();
   }, []);
+
+  useEffect(() => {
+    if (!queuedVideoEvent || !videoRef.current || !videoDuration) return;
+    jumpToEvent(queuedVideoEvent);
+    setQueuedVideoEvent(null);
+  }, [queuedVideoEvent, page, videoDuration]);
+
+  async function handleSaveIncident() {
+    console.log("Save button clicked");
+
+    if (!selected) {
+      console.log("No selected incident");
+      return;
+    }
+
+    await saveIncident({
+      status: selected.status || "OPEN",
+      notes: incidentNotes,
+    });
+  }
+
+  async function openIncident(incident) {
+    console.log("OPENED INCIDENT OBJECT:", incident);
+    setIncidentStatus(detail.status || "OPEN");
+    setIncidentLoading(true);
+    setIncidentError("");
+    setIncidentSuccess("");
+    try {
+      const incidentId =
+        selected.incident_id ||
+        selected.id ||
+        selected.incidentId;
+
+      if (!incidentId) {
+        setIncidentError("Incident ID is missing.");
+        setIncidentSaving(false);
+        return;
+      }
+
+      const detail = await updateIncident(incidentId, update);
+      setSelectedIncident(detail);
+      setIncidentNotes(detail.notes || "");
+    } catch (error) {
+      setSelectedIncident(null);
+      setIncidentError(error.message || "Could not load incident details.");
+    } finally {
+      setIncidentLoading(false);
+    }
+  }
+
+  async function saveIncident(update) {
+    if (!selected) return;
+
+    setIncidentSaving(true);
+    setIncidentError("");
+    setIncidentSuccess("");
+
+    try {
+      const detail = await updateIncident(selected.incident_id, update);
+
+      setSelected(detail);
+      setIncidentNotes(detail.notes || "");
+      setIncidents((current) => current.map((item) =>
+        item.incident_id === detail.incident_id ? detail : item
+      ));
+      setIncidentSuccess("Incident saved.");
+    } catch (error) {
+      setIncidentError(error.message || "Could not save incident changes.");
+    } finally {
+      setIncidentSaving(false);
+    }
+  }
+
+  function openLinkedIncidentEvent() {
+    if (!selectedIncident) return;
+    setPage("Dashboard");
+    setSelectedIncident(null);
+    setQueuedVideoEvent({
+      id: selectedIncident.event_id,
+      type: formatEventType(selectedIncident.event_type),
+      location: selectedIncident.location || selectedIncident.zone_id || "Unassigned Zone",
+      riskScore: selectedIncident.risk_score,
+      riskLevel: selectedIncident.risk_level || "LOW",
+      status: selectedIncident.status,
+      videoTimestamp: getVideoTimestamp(selectedIncident),
+    });
+  }
 
   async function loadVideoSession() {
   try {
@@ -251,29 +353,6 @@ export default function App() {
     }
   }
 
-  function jumpToEvent(event) {
-  const timestamp = Number(event.videoTimestamp);
-
-  if (
-    !videoRef.current ||
-    !Number.isFinite(timestamp) ||
-    timestamp < 0
-  ) {
-    setSelected(event);
-    setNotification("Video position is not available for this event");
-    return;
-  }
-
-  videoRef.current.currentTime = timestamp;
-  setVideoTime(timestamp);
-  setSelected(event);
-  setAcknowledged(false);
-
-  setNotification(
-    `${event.type} opened at ${formatVideoTime(timestamp)}`
-  );
-}
-
   function handleVideoLoadedMetadata() {
     if (!videoRef.current) return;
 
@@ -304,42 +383,48 @@ export default function App() {
   }
 
   function getVideoTimestamp(event) {
-  const value =
-    event.videoTimestamp ??
-    event.video_timestamp ??
-    event.evidence?.video_timestamp;
+    const value =
+      event.videoTimestamp ??
+      event.video_timestamp ??
+      event.evidence?.video_timestamp ??
+      event.evidence?.videoTimestamp ??
+      event.video_time ??
+      event.videoTime;
 
-  const numericValue = Number(value);
+    const numericValue = Number(value);
 
-  return Number.isFinite(numericValue)
-    ? numericValue
-    : null;
-}
-
-  function jumpToEvent(event) {
-  const timestamp = Number(event.videoTimestamp);
-
-  if (
-    !videoRef.current ||
-    !Number.isFinite(timestamp) ||
-    timestamp < 0
-  ) {
-    setSelected(event);
-    setNotification("Video position is not available for this event");
-    return;
+    return Number.isFinite(numericValue) && numericValue >= 0
+      ? numericValue
+      : null;
   }
 
-  videoRef.current.currentTime = timestamp;
-  setVideoTime(timestamp);
-  setSelected(event);
-  setAcknowledged(false);
-  setNotification(`${event.type} opened at ${formatVideoTime(timestamp)}`);
-}
+  function jumpToEvent(event) {
+    const timestamp = getVideoTimestamp(event);
+
+    if (
+      !videoRef.current ||
+      timestamp === null ||
+      timestamp > videoDuration
+    ) {
+      setSelected(event);
+      setNotification("Video position is not available for this event");
+      return;
+    }
+
+    videoRef.current.currentTime = timestamp;
+    setVideoTime(timestamp);
+    setSelected(event);
+    setAcknowledged(false);
+
+    setNotification(
+      `${event.type} opened at ${formatVideoTime(timestamp)}`
+    );
+  }
 
   const displayEvents = backendEvents.map((event, index) => ({
     id: event.event_id || `EVT-${index + 1}`,
     type: formatEventType(event.event_type),
-    location: event.zone || event.location || "Unassigned Zone",
+    location: event.zone_id || event.zone || event.location || "Unassigned Zone",
     timestamp: event.timestamp,
 
     videoTimestamp: getVideoTimestamp(event),
@@ -350,12 +435,19 @@ export default function App() {
 
     riskScore:
       event.risk?.risk_score ??
+      event.risk_score ??
       event.reliability_score ??
       0,
 
     riskLevel:
       event.risk?.risk_level ??
-      (Number(event.reliability_score || 0) >= 70
+      event.risk_level ??
+      (Number(
+        event.risk?.risk_score ??
+          event.risk_score ??
+          event.reliability_score ??
+          0
+      ) >= 70
         ? "HIGH"
         : "LOW"),
 
@@ -569,6 +661,16 @@ const filtered = useMemo(
                 </div>
 
                 <div>
+                  <small>Camera</small>
+                  <b>{videoSession?.camera_name || "Unknown camera"}</b>
+                </div>
+
+                <div>
+                  <small>Location</small>
+                  <b>{videoSession?.camera_location || "Unknown location"}</b>
+                </div>
+
+                <div>
                   <small>Current time</small>
                   <b>{Number(videoSession?.current_time || 0).toFixed(1)} sec</b>
                 </div>
@@ -750,9 +852,9 @@ const filtered = useMemo(
                         );
 
                       if (selectedIncident) {
-                        setSelected(selectedIncident);
-                        setAcknowledged(false);
-                        setNotification(`${selectedIncident.type} details opened`);
+                        jumpToEvent(selectedIncident);
+                      } else {
+                        setNotification("Linked event is no longer available");
                       }
                     }}
                   >
@@ -760,13 +862,24 @@ const filtered = useMemo(
 
                     <h3>{formatEventType(event.event_type)}</h3>
 
-                    <p>{event.zone || event.location || "Unassigned Zone"}</p>
+                    <p>{event.zone_id || event.zone || event.location || "Unassigned Zone"}</p>
 
                     <strong className="high">
-                      {event.risk?.risk_score ?? event.reliability_score ?? 0}
+                    {event.risk?.risk_score ??
+                      event.risk_score ??
+                      event.reliability_score ??
+                      0}
                       {" · "}
                       {event.risk?.risk_level ||
-                        (Number(event.reliability_score || 0) >= 70 ? "HIGH" : "LOW")}
+                        event.risk_level ||
+                        (Number(
+                          event.risk?.risk_score ??
+                            event.risk_score ??
+                            event.reliability_score ??
+                            0
+                        ) >= 70
+                          ? "HIGH"
+                          : "LOW")}
                     </strong>
                   </article>
                 ))
@@ -879,20 +992,51 @@ const filtered = useMemo(
                 </p>
 
                 <p>
-                  <b>Status:</b>{" "}
-                  {acknowledged ? "ACKNOWLEDGED" : selected.status}
+                  <b>Current status:</b> {selected.status}
                 </p>
+
+                <label htmlFor="incident-status">
+                  <b>Status</b>
+                </label>
+
+                <select
+                  id="incident-status"
+                  value={selected.status || "OPEN"}
+                  onChange={(event) =>
+                    setSelected((current) => ({
+                      ...current,
+                      status: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="OPEN">Open</option>
+                  <option value="ACKNOWLEDGED">Acknowledged</option>
+                  <option value="IN_PROGRESS">In Progress</option>
+                  <option value="RESOLVED">Resolved</option>
+                  <option value="CLOSED">Closed</option>
+                </select>
+
+                <label htmlFor="incident-notes">
+                  <b>Notes</b>
+                </label>
+
+                <textarea
+                  id="incident-notes"
+                  value={incidentNotes}
+                  onChange={(event) => setIncidentNotes(event.target.value)}
+                  placeholder="Add incident notes"
+                  rows={4}
+                />
               </div>
 
               <div className="incident-actions">
-                {!acknowledged && (
-                  <button
-                    type="button"
-                    onClick={() => setAcknowledged(true)}
-                  >
-                    Acknowledge incident
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handleSaveIncident}
+                  disabled={incidentSaving}
+                >
+                  {incidentSaving ? "Saving..." : "Save changes"}
+                </button>
 
                 <button
                   type="button"
@@ -904,6 +1048,14 @@ const filtered = useMemo(
                   Close details
                 </button>
               </div>
+
+              {incidentError && (
+                <p className="error">{incidentError}</p>
+              )}
+
+              {incidentSuccess && (
+                <p className="success">{incidentSuccess}</p>
+              )}
             </div>
           </div>
         )}
@@ -1019,7 +1171,7 @@ function Table({ data, select, jumpToEvent }) {
               {event.riskScore} · {event.riskLevel}
             </strong>
 
-            <em>OPEN</em>
+            <em>{event.status || "OPEN"}</em>
           </button>
         ))
       )}

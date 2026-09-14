@@ -2,21 +2,21 @@ import cv2
 import numpy as np
 import json
 import urllib.request
+import argparse
 
-from event_reliability import EventReliability
-from event_manager import EventManager
-from aggression_detector import AggressionDetector
-from video_pipeline import VideoPipeline
-from zone_events import ZoneEventDetector
-from crowd_detector import CrowdDetector
-from event_engine import EventEngine
-from privacy_filter import PrivacyFilter
-from tracker import ObjectTracker
-from zones import ZONES
-from zone_engine import ZoneEngine
-from fall_detector import FallDetector
-from cv_event_output import CVEventOutput
-
+from app.cv.event_reliability import EventReliability
+from app.cv.event_manager import EventManager
+from app.cv.aggression_detector import AggressionDetector
+from app.cv.video_pipeline import VideoPipeline
+from app.cv.zone_events import ZoneEventDetector
+from app.cv.crowd_detector import CrowdDetector
+from app.cv.event_engine import EventEngine
+from app.cv.privacy_filter import PrivacyFilter
+from app.cv.tracker import ObjectTracker
+from app.cv.zones import ZONES
+from app.cv.zone_engine import ZoneEngine
+from app.cv.fall_detector import FallDetector
+from app.cv.cv_event_output import CVEventOutput
 
 zone_engine = ZoneEngine(ZONES)
 zone_events = ZoneEventDetector()
@@ -29,10 +29,15 @@ fall_detector = FallDetector()
 privacy_filter = PrivacyFilter()
 cv_event_output = CVEventOutput()
 
-VIDEO_PATH = "../../../demo/istockphoto-1995820194-640_adpp_is.mp4"
+parser = argparse.ArgumentParser()
+parser.add_argument("--video", required=True)
+
+args = parser.parse_args()
+
+VIDEO_PATH = args.video
 
 def send_event_to_backend(event):
-    url = "http://127.0.0.1:8000/api/events/ingest"
+    url = "http://127.0.0.1:8000/api/events"
 
     request = urllib.request.Request(
         url,
@@ -95,14 +100,19 @@ while True:
     result = tracker.track(frame)
 
     if result.boxes.id is not None:
-        boxes = result.boxes.xyxy.cpu().tolist()
-    else:
-        boxes = []
+        all_boxes = result.boxes.xyxy.cpu().tolist()
+        class_ids = result.boxes.cls.int().cpu().tolist()
 
-    privacy_frame = privacy_filter.apply(
-        frame.copy(),
-        boxes
-    )
+        # COCO class ID 0 = person
+        person_boxes = [
+            box
+            for box, class_id in zip(all_boxes, class_ids)
+            if class_id == 0
+        ]
+    else:
+        person_boxes = []
+
+    privacy_frame = privacy_filter.apply(frame.copy(), person_boxes)
 
     crowd_event = None
     boxes = []

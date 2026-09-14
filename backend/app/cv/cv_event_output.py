@@ -20,13 +20,50 @@ class CVEventOutput:
         output = {
             "event_type": event.event_type,
             "timestamp": event.timestamp,
-            "track_id": event.track_id,
-            "zone": event.zone,
-            "confidence": event.confidence,
-            "reliability_score": event.details.get(
-                "reliability_score"
+
+            # Video synchronization
+            "video_timestamp": getattr(
+                event,
+                "video_timestamp",
+                event.timestamp
             ),
-            "details": event.details
+
+            "camera_id": getattr(
+                event,
+                "camera_id",
+                "CAM-01"
+            ),
+
+            "track_id": getattr(
+                event,
+                "track_id",
+                None
+            ),
+
+            "zone": getattr(
+                event,
+                "zone",
+                None
+            ),
+
+            "zone_id": getattr(
+                event,
+                "zone_id",
+                None
+            ),
+
+            "confidence": getattr(
+                event,
+                "confidence",
+                0
+            ),
+
+            "reliability_score": event.details.get(
+                "reliability_score",
+                0
+            ),
+
+            "details": event.details,
         }
 
         return output

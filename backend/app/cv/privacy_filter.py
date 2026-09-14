@@ -26,7 +26,7 @@ class PrivacyFilter:
         (x1, y1, x2, y2)
         """
 
-        x1, y1, x2, y2 = bounding_box
+        x1, y1, x2, y2 = map(int, bounding_box)
 
         height, width = frame.shape[:2]
 
@@ -45,7 +45,7 @@ class PrivacyFilter:
 
         blurred_region = cv2.GaussianBlur(
             region,
-            (51, 51),
+            (21, 21),
             0,
         )
 

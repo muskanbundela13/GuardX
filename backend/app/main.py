@@ -1,14 +1,15 @@
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from subprocess import Popen
+import sys
 from threading import Lock
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from backend.app.database import initialize_database
-from backend.app.database import get_connection
+from .database import initialize_database, get_connection
 
 from typing import Any
 
@@ -311,7 +312,41 @@ def get_analytics():
 
 @app.get("/api/incidents")
 def get_incidents():
-    return [incident_response(row) for row in incident_query()]
+    connection = get_connection()
+
+    try:
+        rows = connection.execute("""
+            SELECT
+                id,
+                incident_id,
+                title,
+                incident_type,
+                priority,
+                risk_score,
+                risk_level,
+                status,
+                location,
+                camera_id,
+                zone_id,
+                session_id,
+                created_at,
+                acknowledged_at,
+                assigned_at,
+                resolved_at,
+                closed_at,
+                assigned_responder,
+                related_event_ids,
+                status_history,
+                recommended_action,
+                NULL AS notes
+            FROM incidents
+            ORDER BY id DESC
+        """).fetchall()
+
+        return [dict(row) for row in rows]
+
+    finally:
+        connection.close()
 
 
 @app.get("/api/incidents/{incident_id}")
@@ -586,7 +621,7 @@ app.add_middleware(
 VIDEO_PATH = (
     Path(__file__).resolve().parents[2]
     / "demo"
-    / "istockphoto-1995820194-640_adpp_is.mp4"
+    / "cctv_test.mp4"
 )
 
 
@@ -657,6 +692,25 @@ def start_video_session():
                 detail=f"Video file not found: {VIDEO_PATH}",
             )
 
+        backend_dir = Path(__file__).resolve().parents[1]
+
+        try:
+            process = Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "app.cv.detection_runner",
+                    "--video",
+                    str(VIDEO_PATH),
+                ],
+                cwd=backend_dir,
+            )
+        except Exception as error:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not start detection runner: {error}",
+            ) from error
+
         video_session.session_id = str(uuid4())
         video_session.status = "RUNNING"
         video_session.started_at = datetime.now(
@@ -664,11 +718,14 @@ def start_video_session():
         ).isoformat()
         video_session.stopped_at = None
         video_session.current_time = 0.0
-        video_session.duration = 0.0
         video_session.current_frame = 0
         video_session.completed = False
 
-        return session_response()
+        return {
+            **session_response(),
+            "process_id": process.pid,
+            "message": "Video analysis started",
+        }
 
 
 @app.post("/api/video/stop")
@@ -702,6 +759,40 @@ def reset_video_session():
 
         return session_response()
 
+@app.post("/api/demo/reset")
+def reset_demo_data():
+    """
+    Completely reset the GuardX demo.
+    Deletes all previous events and incidents.
+    """
+
+    connection = get_connection()
+
+    try:
+        connection.execute("DELETE FROM incidents")
+        connection.execute("DELETE FROM events")
+        connection.commit()
+    finally:
+        connection.close()
+
+    with session_lock:
+        video_session.session_id = None
+        video_session.status = "IDLE"
+        video_session.started_at = None
+        video_session.stopped_at = None
+        video_session.current_time = 0.0
+        video_session.duration = 0.0
+        video_session.current_frame = 0
+        video_session.completed = False
+
+    events_store.clear()
+
+    return {
+        "status": "success",
+        "message": "Demo data reset successfully",
+        "total_events": 0,
+        "total_incidents": 0,
+    }
 
 class VideoProgress(BaseModel):
     current_time: float = 0.0

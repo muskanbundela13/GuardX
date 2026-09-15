@@ -12,11 +12,13 @@ import {
   updateIncident,
   resolveIncident,
   getResponders,
+  resetDemoData,
   getVideoSession,
   startVideoSession,
   stopVideoSession,
   resetVideoSession,
   updateVideoProgress,
+  
 } from "./services/api";
 
 const pages = [
@@ -68,6 +70,7 @@ export default function App() {
   const [queuedVideoEvent, setQueuedVideoEvent] = useState(null);
   const [score,setScore] = useState(42);
   const [backendEvents, setBackendEvents] = useState([]);
+  const [isResettingDemo, setIsResettingDemo] = useState(false);
   const [analytics, setAnalytics] = useState(null);
   const [incidents, setIncidents] = useState([]);
   const [responders, setResponders] = useState([]);
@@ -101,14 +104,23 @@ export default function App() {
   testBackend();
 }, []);
 
+
   useEffect(() => {
     async function loadEvents() {
+      if (isResettingDemo) {
+        return;
+      }
+
       try {
         const data = await getEvents();
 
         console.log("Backend events loaded:", data);
 
-        setBackendEvents(Array.isArray(data) ? data : data.events || []);
+        const freshEvents = Array.isArray(data)
+          ? data
+          : data?.events || [];
+
+        setBackendEvents(freshEvents);
         setLastUpdated(new Date());
       } catch (error) {
         console.error("Could not load backend events:", error);
@@ -120,38 +132,47 @@ export default function App() {
     const interval = setInterval(loadEvents, 2000);
 
     return () => clearInterval(interval);
-  }, []);
-
+  }, [isResettingDemo]);
 
   useEffect(() => {
-  async function loadBackendData() {
-    try {
-      const [analyticsData, incidentsData, respondersData] =
-        await Promise.all([
-          getAnalytics(),
-          getIncidents(),
-          getResponders(),
-        ]);
+async function loadBackendData() {
+  try {
+    const respondersData = await getResponders();
 
-      setAnalytics(analyticsData);
-      setIncidents(
-        Array.isArray(incidentsData)
-          ? incidentsData
-          : incidentsData.incidents || []
-      );
+    const responderList = Array.isArray(respondersData)
+      ? respondersData
+      : respondersData?.responders || [];
 
-      setResponders(
-        Array.isArray(respondersData)
-          ? respondersData
-          : respondersData.responders || []
-      );
-      setLastUpdated(new Date());
-    } catch (error) {
-      console.error("Could not load backend data:", error);
-    }
+    console.log("Responders loaded:", responderList);
+    setResponders(responderList);
+  } catch (error) {
+    console.error("Could not load responders:", error);
+    setResponders([]);
   }
 
-  loadBackendData();
+  try {
+    const incidentsData = await getIncidents();
+
+    const incidentList = Array.isArray(incidentsData)
+      ? incidentsData
+      : incidentsData?.incidents || [];
+
+    setIncidents(incidentList);
+  } catch (error) {
+    console.error("Could not load incidents:", error);
+    setIncidents([]);
+  }
+
+  try {
+    const analyticsData = await getAnalytics();
+    setAnalytics(analyticsData);
+  } catch (error) {
+    console.error("Could not load analytics:", error);
+    setAnalytics(null);
+  }
+
+  setLastUpdated(new Date());
+}
 
   const interval = setInterval(loadBackendData, 2000);
 
@@ -310,6 +331,14 @@ export default function App() {
 }
 
   async function handleStartVideo() {
+    if (videoLoading) {
+      return;
+    }
+
+    if (videoSession?.status === "RUNNING") {
+      return;
+    }
+
     setVideoLoading(true);
     setVideoError("");
 
@@ -318,12 +347,12 @@ export default function App() {
       setVideoSession(data.session);
     } catch (error) {
       console.error("Could not start video:", error);
-      setVideoError(error.message);
+      setVideoError(error.message || "Could not start video analysis");
+      throw error;
     } finally {
       setVideoLoading(false);
     }
   }
-
   async function handleStopVideo() {
     setVideoLoading(true);
     setVideoError("");
@@ -356,14 +385,94 @@ export default function App() {
 
   async function handleVideoPlay() {
     try {
-      await handleStartVideo();
+      if (!videoRef.current) {
+        return;
+      }
 
-      if (!videoRef.current) return;
+      const alreadyRunning = videoSession?.status === "RUNNING";
+
+      if (!alreadyRunning) {
+        await handleStartVideo();
+      }
 
       await videoRef.current.play();
       setIsVideoPlaying(true);
     } catch (error) {
-      setVideoError(error.message);
+      console.error("Could not play video:", error);
+      setVideoError(error.message || "Could not play video");
+    }
+  }
+
+  async function handleResetDemo() {
+    const confirmed = window.confirm(
+      "This will delete all old events and incidents. Continue?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsResettingDemo(true);
+
+    try {
+      // Clear the UI immediately.
+      setBackendEvents([]);
+      setIncidents([]);
+
+      setAnalytics({
+        total_events: 0,
+        average_risk: 0,
+        high_risk_events: 0,
+        threat_distribution: {},
+        event_type_distribution: {},
+      });
+
+      setSelected(null);
+      setSelectedIncident(null);
+      setQueuedVideoEvent(null);
+      setAcknowledged(false);
+      setNotification(null);
+      setLastUpdated(new Date());
+
+      // Delete backend events and incidents.
+      await resetDemoData();
+
+      // Confirm that the backend is empty.
+      const [eventsData, incidentsData, analyticsData] = await Promise.all([
+        getEvents(),
+        getIncidents(),
+        getAnalytics(),
+      ]);
+
+      const freshEvents = Array.isArray(eventsData)
+        ? eventsData
+        : eventsData?.events || [];
+
+      const freshIncidents = Array.isArray(incidentsData)
+        ? incidentsData
+        : incidentsData?.incidents || [];
+
+      setBackendEvents(freshEvents);
+      setIncidents(freshIncidents);
+
+      setAnalytics({
+        ...(analyticsData || {}),
+        total_events: freshEvents.length,
+      });
+
+      setLastUpdated(new Date());
+
+      alert(
+        freshEvents.length === 0
+          ? "Demo reset successfully. Total events is now 0."
+          : `Reset completed, but the backend returned ${freshEvents.length} events.`
+      );
+    } catch (error) {
+      console.error("Reset failed:", error);
+
+      alert(error.message || "Reset failed. Check the backend terminal.");
+    } finally {
+      setIsResettingDemo(false);
     }
   }
 
@@ -413,9 +522,22 @@ export default function App() {
     setVideoDuration(videoRef.current.duration);
   }
 
-  function handleVideoEnded() {
+  async function handleVideoEnded() {
     setIsVideoPlaying(false);
+
+  try {
+    await updateVideoProgress({
+      current_time: videoDuration,
+      duration: videoDuration,
+      current_frame: Math.floor(videoDuration * 30),
+      completed: true,
+    });
+
+    await loadVideoSession();
+  } catch (error) {
+    console.error("Could not complete video session:", error);
   }
+}
 
   function handleVideoSeek(event) {
     const nextTime = Number(event.target.value);
@@ -622,7 +744,7 @@ const filtered = useMemo(
               <video
                 ref={videoRef}
                 className="guardx-video"
-                src="/guardx-demo.mp4"
+                src="/cctv_test.mp4"
                 onTimeUpdate={handleVideoTimeUpdate}
                 onLoadedMetadata={handleVideoLoadedMetadata}
                 onEnded={handleVideoEnded}
